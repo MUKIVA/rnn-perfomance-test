@@ -4,7 +4,7 @@ import okio.buffer
 import utils.ILogger
 
 fun main(args: Array<String>) {
-    val path = "./out.txt".toPath()
+    val path = "./out.csv".toPath()
     val sink =  FileSystem.SYSTEM
         .sink(path)
         .buffer()
