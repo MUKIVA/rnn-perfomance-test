@@ -32,7 +32,7 @@ class CLIConfigurationFactory(
         }
 
         return Configuration(
-            frequency = argsMap.value[ArgName.FREQUENCY] as? Double ?: 5.0,
+            frequency = argsMap.value[ArgName.FREQUENCY] as? Double ?: 1.0,
             timeDuration = argsMap.value[ArgName.TIME_DURATION] as? Double ?: 1000.0,
             perlinScale = argsMap.value[ArgName.PERLIN_SCALE] as? Double ?: 1.0,
             seed = argsMap.value[ArgName.SEED] as? Long ?: Random.nextLong()

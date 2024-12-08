@@ -1,8 +1,6 @@
-import gen.IIterateGen
-import gen.OffsetIterateGenDecorator
-import gen.PerlinNoiseIterateDecorator
-import gen.SinIterateGen
+import gen.*
 import okio.BufferedSink
+import kotlin.math.PI
 
 class Application(
     private val config: IConfiguration,
@@ -18,7 +16,7 @@ class Application(
     fun run(outBuffer: BufferedSink) {
         val gen = createGen()
 
-        val stepCount = (config.timeDuration / config.frequency).toInt()
+        val stepCount = config.timeDuration.toInt()
 
         repeat(stepCount) {
             val value = gen.generateNext()
@@ -28,11 +26,11 @@ class Application(
 
     private fun createGen(): IIterateGen<Double> {
         val angle = 0.0
-        val step = config.timeDuration / config.frequency
+        val mainStep = PI / config.frequency
 
         val sinGen = SinIterateGen(
             initialAngle = angle,
-            step = step
+            step = mainStep
         )
 
         val perlinGen = PerlinNoiseIterateDecorator(
@@ -41,14 +39,16 @@ class Application(
             perlinScale = config.perlinScale
         )
 
-        return OffsetIterateGenDecorator(
-            iterateGen = perlinGen,
-            sign = OffsetIterateGenDecorator.Sign.POSITIVE,
-            step = step
+        return SeasonOffsetIterateGenDecorator(
+            gen = perlinGen,
+            scale = 0.5,
+            step = PI / (config.timeDuration / SEASON_COUNT),
         )
     }
 
     companion object {
-        private const val SEPARATOR = ";"
+        private const val SEPARATOR = "\n"
+
+        private const val SEASON_COUNT = 4
     }
 }

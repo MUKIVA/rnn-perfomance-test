@@ -15,7 +15,9 @@ class PerlinNoiseIterateDecorator(
 
     override fun generateNext(): Double {
         val value = iterateGen.generateNext()
-        return value + perlinNoise1D.noise(value) * perlinScale
+        val perlin = perlinNoise1D.noise(value)
+        println("VALUE: $value; PERLIN: ${perlin * perlinScale};")
+        return value + perlin * perlinScale
     }
 
 }
