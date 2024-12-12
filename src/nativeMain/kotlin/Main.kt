@@ -1,7 +1,6 @@
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.buffer
-import utils.ILogger
 
 fun main(args: Array<String>) {
     val path = "./out.csv".toPath()
@@ -9,13 +8,7 @@ fun main(args: Array<String>) {
         .sink(path)
         .buffer()
 
-    val configFactory = CLIConfigurationFactory(
-        logger = object : ILogger {
-            override val log: (Any) -> Unit = { obj ->
-                println(obj.toString())
-            }
-        }
-    )
+    val configFactory = CLIConfigurationFactory()
 
     Application(
         config = configFactory.create(args.toList())

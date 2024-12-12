@@ -1,22 +1,20 @@
 package gen
 
+import kotlin.math.PI
 import kotlin.math.sin
 
-class SeasonOffsetIterateGenDecorator(
+class SinIterateGenDecorator(
     private val gen: IIterateGen<Double>,
-    private val scale: Double,
-    private val period: Double,
+    private val amplitude: Double = 1.0,
+    private val period: Double = 10.0
 ) : IIterateGen<Double> {
     override val iteration: UInt
         get() = gen.iteration
 
-    private var mAngle: Double = 0.0
-
     override fun generateNext(): Double {
         val value = gen.generateNext()
-        val sin = (sin(mAngle) * scale).apply {
-            mAngle += period
-        }
-        return value + sin
+        val s = sin((2 * PI / period) * iteration.toDouble()) * amplitude
+        return value + s
     }
+
 }

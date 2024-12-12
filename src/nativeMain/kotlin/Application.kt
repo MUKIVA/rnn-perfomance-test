@@ -1,21 +1,21 @@
+import descriptors.*
 import gen.*
 import okio.BufferedSink
-import kotlin.math.PI
+import utils.toRadians
+import kotlin.math.tan
 
-class Application(
+open class Application(
     private val config: IConfiguration,
 ) {
 
     interface IConfiguration {
-        val frequency: Double
         val timeDuration: Double
-        val perlinScale: Double
         val seed: Long
+        val description: List<IDecorationDescriptor>
     }
 
     fun run(outBuffer: BufferedSink) {
-        val gen = createGen()
-
+        val gen = createGen(config.description)
         val stepCount = config.timeDuration.toInt()
 
         repeat(stepCount) {
@@ -24,31 +24,42 @@ class Application(
         }
     }
 
-    private fun createGen(): IIterateGen<Double> {
-        val angle = 0.0
-        val mainStep = PI / config.frequency
+    private fun createGen(description: List<IDecorationDescriptor>): IIterateGen<Double> {
+        var currentGen: IIterateGen<Double> = RootSequenceGen()
+        description.onEach { descriptor ->
+            currentGen = createGenDecoration(currentGen, descriptor)
+        }
+        return currentGen
+    }
 
-        val sinGen = SinIterateGen(
-            initialAngle = angle,
-            step = mainStep
+    private fun createGenDecoration(
+        gen: IIterateGen<Double>,
+        descriptor: IDecorationDescriptor
+    ) : IIterateGen<Double> = when (descriptor) {
+        is PerlinDescriptor -> PerlinNoiseIterateDecorator(
+            iterateGen = gen,
+            seed = config.seed.toInt(),
+            perlinScale = descriptor.scale,
+            iterationFraction = descriptor.iterationFraction
         )
-
-        val perlinGen = PerlinNoiseIterateDecorator(
-            seed = config.seed,
-            iterateGen = sinGen,
-            perlinScale = config.perlinScale
+        is SeasonDescriptor -> SeasonOffsetIterateGenDecorator(
+            gen = gen,
+            scale = descriptor.scale,
+            period = descriptor.period
         )
-
-        return SeasonOffsetIterateGenDecorator(
-            gen = perlinGen,
-            scale = 0.5,
-            step = PI / (config.timeDuration / SEASON_COUNT),
+        is SinDescriptor -> SinIterateGenDecorator(
+            gen = gen,
+            amplitude = descriptor.amplitude,
+            period = descriptor.period
+        )
+        is TrendDescriptor -> TrendIterateGenDecorator(
+            gen = gen,
+            tan = tan(descriptor.angle.toRadians()),
+            offset = descriptor.offset
         )
     }
 
     companion object {
         private const val SEPARATOR = "\n"
-
-        private const val SEASON_COUNT = 4
     }
 }

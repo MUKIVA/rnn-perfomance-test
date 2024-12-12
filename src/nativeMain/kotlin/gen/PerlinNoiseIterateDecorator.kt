@@ -1,22 +1,22 @@
 package gen
 
-import utils.PerlinNoise1D
+import utils.PerlinNoiseGenerator
 
 class PerlinNoiseIterateDecorator(
-    seed: Long,
+    seed: Int,
     private val iterateGen: IIterateGen<Double>,
-    private val perlinScale: Double
+    private val perlinScale: Double,
+    private val iterationFraction: Double
 ) : IIterateGen<Double> {
 
-    private val perlinNoise1D = PerlinNoise1D(seed)
+    private val perlinNoise = PerlinNoiseGenerator(seed)
 
     override val iteration: UInt
         get() = iterateGen.iteration
 
     override fun generateNext(): Double {
         val value = iterateGen.generateNext()
-        val perlin = perlinNoise1D.noise(value)
-        println("VALUE: $value; PERLIN: ${perlin * perlinScale};")
+        val perlin = perlinNoise.perlin(iteration.toDouble() / iterationFraction)
         return value + perlin * perlinScale
     }
 

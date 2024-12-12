@@ -1,64 +1,56 @@
-import kotlinx.coroutines.*
-import utils.ILogger
+@file:Suppress("UNCHECKED_CAST")
+
+import descriptors.*
 import kotlin.experimental.ExperimentalNativeApi
-import kotlin.concurrent.AtomicReference
 import kotlin.random.Random
 
-class CLIConfigurationFactory(
-    private val logger: ILogger
-) : AbstractFactory<Application.IConfiguration, List<String>>() {
+class CLIConfigurationFactory : AbstractFactory<Application.IConfiguration, List<String>>() {
 
     interface IArgHandler<TResult> {
-        fun handle(value: String, onFinish: (TResult) -> Unit)
-        fun isRunning(): Boolean
+        fun handle(value: String): TResult
     }
 
     private data class Configuration(
-        override val frequency: Double,
         override val timeDuration: Double,
-        override val perlinScale: Double,
-        override val seed: Long
+        override val seed: Long,
+        override val description: List<IDecorationDescriptor>
     ) : Application.IConfiguration
 
-    private val argsMap: AtomicReference<MutableMap<ArgName, Any>> = AtomicReference(mutableMapOf())
-    private val runningHandlers: MutableList<IArgHandler<*>> = mutableListOf()
+    private val argsMap: MutableMap<ArgName, Any> = mutableMapOf()
 
     override fun create(input: List<String>): Application.IConfiguration {
         input.onEachWithSplit { (key, value) -> dispatchArg(key, value) }
 
-        logger.log("[PREPARE] Handle Arguments...")
-        while (runningHandlers.any { it.isRunning() }) {
-            // Nothing to do
-        }
-
         return Configuration(
-            frequency = argsMap.value[ArgName.FREQUENCY] as? Double ?: 1.0,
-            timeDuration = argsMap.value[ArgName.TIME_DURATION] as? Double ?: 1000.0,
-            perlinScale = argsMap.value[ArgName.PERLIN_SCALE] as? Double ?: 1.0,
-            seed = argsMap.value[ArgName.SEED] as? Long ?: Random.nextLong()
+            timeDuration = argsMap[ArgName.TIME_DURATION] as? Double ?: 100000.0,
+            seed = argsMap[ArgName.SEED] as? Long ?: Random.nextLong(),
+            description = argsMap[ArgName.DESCRIPTION] as? List<IDecorationDescriptor> ?: emptyList()
         )
     }
 
     private fun saveArg(name: ArgName, value: Any) {
-        argsMap.value.set(
+        argsMap.set(
             key = name,
             value = value
         )
     }
 
-    private fun dispatchArg(key: String, value: String) = when (val argName = ArgName.fromName(key)) {
-        ArgName.FREQUENCY -> FrequencyHandler.handle(value) {
-            saveArg(argName, it)
-        }.also { runningHandlers.add(FrequencyHandler) }
-        ArgName.TIME_DURATION -> TimeDurationHandler.handle(value) {
-            saveArg(argName, it)
-        }.also { runningHandlers.add(TimeDurationHandler) }
-        ArgName.PERLIN_SCALE -> PerlinScaleHandler.handle(value) {
-            saveArg(argName, it)
-        }.also { runningHandlers.add(PerlinScaleHandler) }
-        ArgName.SEED -> SeedHandler.handle(value) {
-            saveArg(argName, value)
-        }.also { runningHandlers.add(SeedHandler) }
+    private fun dispatchArg(key: String, value: String) {
+        when (val argName = ArgName.fromName(key)) {
+            ArgName.TIME_DURATION -> TimeDurationHandler.handle(value).also {
+                saveArg(argName, it)
+            }
+            ArgName.SEED -> SeedHandler.handle(value).also {
+                saveArg(argName, it)
+            }
+            ArgName.DESCRIPTION -> DescriptionHandler(key).handle(value).also {
+                if (argsMap[ArgName.DESCRIPTION] == null) {
+                    argsMap[ArgName.DESCRIPTION] = mutableListOf<IDecorationDescriptor>()
+                }
+                (argsMap[ArgName.DESCRIPTION] as? MutableList<IDecorationDescriptor>)
+                    ?.add(it)
+            }
+        }
     }
 
 
@@ -80,29 +72,27 @@ class CLIConfigurationFactory(
     }
 
     private enum class ArgName(
-        val fullName: String,
-        val shortName: String,
+        val fullName: String
     ) {
-        FREQUENCY(
-            fullName = "frequency",
-            shortName = "f",
+        DESCRIPTION(
+            fullName = """
+                SIN
+                PERLIN
+                SEASON
+                TREND
+            """.trimIndent()
+
         ),
         TIME_DURATION(
             fullName = "duration",
-            shortName = "d",
-        ),
-        PERLIN_SCALE(
-            fullName = "perlin",
-            shortName = "p",
         ),
         SEED(
             fullName = "seed",
-            shortName = "s",
         );
 
         companion object {
             fun fromName(name: String): ArgName = ArgName.entries.find {
-                name == it.fullName || name == it.shortName
+                it.fullName.contains(name)
             } ?: throw IllegalArgumentException("Illegal argument name: \"$name\"")
         }
     }
@@ -112,70 +102,64 @@ class CLIConfigurationFactory(
     }
 }
 
-abstract class AsyncHandler<TResult> : CLIConfigurationFactory.IArgHandler<TResult> {
-    protected val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+open class DoubleHandler : CLIConfigurationFactory.IArgHandler<Double> {
+    override fun handle(value: String): Double {
+        return value.toDouble()
+    }
 }
 
-object FrequencyHandler : AsyncHandler<Double>() {
+class DescriptionHandler(
+    private val descriptorType: String
+) : CLIConfigurationFactory.IArgHandler<IDecorationDescriptor> {
 
-    private var job: Job? = null
+    private val sinDescriptorFactory: (String) -> IDecorationDescriptor = { args ->
+        val splitArgs = args.split(SEPARATOR)
+        SinDescriptor(
+            period = splitArgs[0].toDouble(),
+            amplitude = splitArgs[1].toDouble()
+        )
+    }
 
-    override fun handle(value: String, onFinish: (Double) -> Unit) {
-        job = scope.launch {
-            val result = value.toDouble()
-            onFinish(result)
+    private val perlinDescriptorFactory: (String) -> IDecorationDescriptor = { args ->
+        val splitArgs = args.split(SEPARATOR)
+        PerlinDescriptor(
+            scale = splitArgs[0].toDouble(),
+            iterationFraction = splitArgs[1].toDouble()
+        )
+    }
+
+    private val seasonDescriptorFactory: (String) -> IDecorationDescriptor = { args ->
+        val splitArgs = args.split(SEPARATOR)
+        SeasonDescriptor(
+            scale = splitArgs[0].toDouble(),
+            period = splitArgs[1].toDouble()
+        )
+    }
+
+    private val trendDescriptorFactory: (String) -> IDecorationDescriptor = { args ->
+        val splitArgs = args.split(SEPARATOR)
+        TrendDescriptor(
+            angle = splitArgs[0].toDouble(),
+            offset = splitArgs[1].toDouble()
+        )
+    }
+
+    override fun handle(value: String): IDecorationDescriptor {
+        return when (descriptorType) {
+            "SIN"       -> sinDescriptorFactory(value)
+            "PERLIN"    -> perlinDescriptorFactory(value)
+            "SEASON"    -> seasonDescriptorFactory(value)
+            "TREND"     -> trendDescriptorFactory(value)
+            else -> throw IllegalArgumentException("Illegal descriptor name: \"$value\"")
         }
     }
 
-    override fun isRunning(): Boolean {
-        return job?.isActive ?: false
+
+    companion object {
+        private const val SEPARATOR = ","
     }
 }
 
-object TimeDurationHandler : AsyncHandler<Double>() {
+object TimeDurationHandler : DoubleHandler()
 
-    private var job: Job? = null
-
-    override fun handle(value: String, onFinish: (Double) -> Unit) {
-        job = scope.launch {
-            val result = value.toDouble()
-            onFinish(result)
-        }
-    }
-
-    override fun isRunning(): Boolean {
-        return job?.isActive ?: false
-    }
-}
-
-object PerlinScaleHandler : AsyncHandler<Double>() {
-
-    private var job: Job? = null
-
-    override fun handle(value: String, onFinish: (Double) -> Unit) {
-        job = scope.launch {
-            val result = value.toDouble()
-            onFinish(result)
-        }
-    }
-
-    override fun isRunning(): Boolean {
-        return job?.isActive ?: false
-    }
-}
-
-object SeedHandler : AsyncHandler<Int>() {
-
-    private var job: Job? = null
-
-    override fun handle(value: String, onFinish: (Int) -> Unit) {
-        job = scope.launch {
-            val result = value.toInt()
-            onFinish(result)
-        }
-    }
-
-    override fun isRunning(): Boolean {
-        return job?.isActive ?: false
-    }
-}
+object SeedHandler : DoubleHandler()
